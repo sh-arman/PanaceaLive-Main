@@ -1,312 +1,127 @@
 <?php
 
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\App;
+
 /*
-* Company admin Dashboard ======================================================
+|--------------------------------------------------------------------------
+| Company Admin Dashboard - codes.panacea.live (LOCAL: /admin prefix)
+|--------------------------------------------------------------------------
 */
-Route::group(['prefix' => 'codes'], function () {
-
-    Route::group(['middleware' => 'checksession'], function () {
-        Route::get('/', [
-            'as' => 'generationPanel.login',
-            'uses' => 'CodeGenerationPanelNewController@showLogin',
-        ]);
-        Route::post('/verifyLogin', [
-            'uses' => 'CodeGenerationPanelNewController@processLogin',
-        ]);
-        Route::get('/verify', [
-            'as' => 'generationPanel.verify',
-            'uses' => 'CodeGenerationPanelNewController@showVerify',
-        ]);
-        Route::post('/confirmLogin', [
-            'uses' => 'CodeGenerationPanelNewController@processVerify',
-        ]);
-        Route::post('/resend', [
-            'uses' => 'CodeGenerationPanelNewController@resendLogin',
-        ]);
-        Route::post('generationPanel/medicines', [
-            'as' => 'generation.code.medicines',
-            'uses' => 'CodeGenerationPanelNewController@showMedicines',
-        ]);
-        Route::post('generationPanel/medicineType', [
-            'as' => 'generation.code.medicineType',
-            'uses' => 'CodeGenerationPanelNewController@showMedicineType',
-        ]);
-        Route::post('generationPanel/medicineDosage', [
-            'as' => 'generation.code.medicineDosage',
-            'uses' => 'CodeGenerationPanelNewController@showMedicineDosage',
-        ]);
-        Route::post('generationPanel/loadMore', [
-            'as' => 'generation.code.loadMore',
-            'uses' => 'CodeGenerationPanelNewController@showMoreData',
-        ]);
-        Route::post('generationPanel/loadLog', [
-            'as' => 'generation.code.loadLog',
-            'uses' => 'CodeGenerationPanelNewController@showMoreLog',
-        ]);
-        Route::post('generationPanel/searchActivityLog', [
-            'as' => 'generation.code.searchActivityLog',
-            'uses' => 'CodeGenerationPanelNewController@searchActivityLog',
-        ]);
-
-        Route::group(['middleware' => 'auth.codegeneration'], function () {
-            Route::get('code/generate', [
-                'as' => 'generationPanel.code.order',
-                'uses' => 'CodeGenerationPanelNewController@showForm',
-            ]);
-            Route::post('code/generate', [
-                'uses' => 'CodeGenerationPanelNewController@orderCode',
-            ]);
-            // Arman Working 2.3.2022
-            Route::post('code/confirm', [
-                'as' => 'generationPanel.code.confirm',
-                // 'uses' => 'CodeGenerationPanelNewController@confirmOrderCode',
-                'uses' => 'CodeGenerationPanelNewController@ConfrimArman',
-            ]);
-            Route::get('code/download/{id}', [
-                'as' => 'generationPanel.code.download',
-                'uses' => 'CodeGenerationPanelNewController@downloadGeneratedCsv',
-            ]);
-            Route::post('code/orderBack', [
-                'as' => 'generationPanel.code.orderBack',
-                'uses' => 'CodeGenerationPanelNewController@orderBackForConfirm',
-            ]);
-            Route::get('logout', [
-                'as' => 'generationPanel.logout',
-                'uses' => 'CodeGenerationPanelNewController@logout',
-            ]);
-            Route::get('order', 'CodeGenerationPanelNewController@indexOrder');
-
-            Route::get('log', [
-                'as' => 'generationPanel.log',
-                'uses' => 'CodeGenerationPanelNewController@showLog',
-            ]);
-            Route::get('templates', [
-                'as' => 'generationPanel.template',
-                'uses' => 'CodeGenerationPanelNewController@showTemplate']);
-            Route::post('addtemplate', [
-                'uses' => 'CodeGenerationPanelNewController@addTemplate']);
-            Route::get('confirmAddTemplate', [
-                'uses' => 'CodeGenerationPanelNewController@confirmAddTemplate']);
-            Route::get('deleteTemplate/{id}', 'CodeGenerationPanelNewController@deleteTemplate');
-            Route::get('choosemenu', [
-                'as' => 'generationPanel.choosemenu',
-                'uses' => 'CodeGenerationPanelNewController@chooseMenu',
-            ]);
-            Route::get('choose/{company}', [
-                'as' => 'generationPanel.choose',
-                'uses' => 'CodeGenerationPanelNewController@chooseCompany',
-            ]);
-        });      
-    });
-    Route::group(['middleware' => 'auth.companyadmin'], function () {
-        Route::get('logout', [
-            'as' => 'generationPanel.logout',
-            'uses' => 'CodeGenerationPanelNewController@logout',
-        ]);
+Route::prefix('admin')->group(function () {
+    
+    // Public login routes
+    Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
+    Route::post('/verifyLogin', 'CodeGenerationPanelNewController@processLogin');
+    Route::get('/verify', 'CodeGenerationPanelNewController@showVerify')->name('generationPanel.verify');
+    Route::post('/confirmLogin', 'CodeGenerationPanelNewController@processVerify');
+    Route::post('/resend', 'CodeGenerationPanelNewController@resendLogin');
+    
+    // Protected routes requiring authentication
+    Route::middleware(['checksession', 'auth.codegeneration'])->group(function () {
+        Route::post('generationPanel/medicines', 'CodeGenerationPanelNewController@showMedicines')->name('generation.code.medicines');
+        Route::post('generationPanel/medicineType', 'CodeGenerationPanelNewController@showMedicineType')->name('generation.code.medicineType');
+        Route::post('generationPanel/medicineDosage', 'CodeGenerationPanelNewController@showMedicineDosage')->name('generation.code.medicineDosage');
+        Route::post('generationPanel/loadMore', 'CodeGenerationPanelNewController@showMoreData')->name('generation.code.loadMore');
+        Route::post('generationPanel/loadLog', 'CodeGenerationPanelNewController@showMoreLog')->name('generation.code.loadLog');
+        Route::post('generationPanel/searchActivityLog', 'CodeGenerationPanelNewController@searchActivityLog')->name('generation.code.searchActivityLog');
+        Route::get('code/generate', 'CodeGenerationPanelNewController@showForm')->name('generationPanel.code.order');
+        Route::post('code/generate', 'CodeGenerationPanelNewController@orderCode');
+        Route::post('code/confirm', 'CodeGenerationPanelNewController@ConfrimArman')->name('generationPanel.code.confirm');
+        Route::get('code/download/{id}', 'CodeGenerationPanelNewController@downloadGeneratedCsv')->name('generationPanel.code.download');
+        Route::post('code/orderBack', 'CodeGenerationPanelNewController@orderBackForConfirm')->name('generationPanel.code.orderBack');
+        Route::get('logout', 'CodeGenerationPanelNewController@logout')->name('generationPanel.logout');
+        Route::get('order', 'CodeGenerationPanelNewController@indexOrder');
+        Route::get('log', 'CodeGenerationPanelNewController@showLog')->name('generationPanel.log');
+        Route::get('templates', 'CodeGenerationPanelNewController@showTemplate')->name('generationPanel.template');
+        Route::post('addtemplate', 'CodeGenerationPanelNewController@addTemplate');
+        Route::get('confirmAddTemplate', 'CodeGenerationPanelNewController@confirmAddTemplate');
+        Route::get('deleteTemplate/{id}', 'CodeGenerationPanelNewController@deleteTemplate');
+        Route::get('choosemenu', 'CodeGenerationPanelNewController@chooseMenu')->name('generationPanel.choosemenu');
+        Route::get('choose/{company}', 'CodeGenerationPanelNewController@chooseCompany')->name('generationPanel.choose');
     });
 });
 
-
-// Local-fallback routes for development: expose OTP endpoints on localhost
-Route::post('/verifyLogin', [
-    'uses' => 'CodeGenerationPanelNewController@processLogin'
-]);
-Route::post('/confirmLogin', [
-    'uses' => 'CodeGenerationPanelNewController@processVerify'
-]);
-Route::post('/resend', [
-    'uses' => 'CodeGenerationPanelNewController@resendLogin'
-]);
-
-
-
-
 /*
- * Mobile site live
- */
-Route::group(['domain' => 'm.panacea.live'], function () {
+|--------------------------------------------------------------------------
+| Mobile Site - m.panacea.live
+|--------------------------------------------------------------------------
+*/
+Route::domain('m.panacea.live')->group(function () {
     Route::get('/', function () {
-       $url = 'https://renata.panacea.live/';
-        return Redirect::to($url);
+        return Redirect::to('https://renata.panacea.live/');
     });
 });
 
 /*
- * Panalytics Dashboard ==========================================================================
- */
-Route::group(['domain' => 'analytics.panacea.live'], function () {    
-    Route::get('/', [
-        'as' => 'panalytics_home',
-        'uses' => 'PanalyticsController@showLanding',
-    ]);
-    Route::get('home', [
-        'as' => 'panalytics_view',
-        'uses' => 'PanalyticsController@index'
-    ]);
+|--------------------------------------------------------------------------
+| Panalytics Dashboard - analytics.panacea.live
+|--------------------------------------------------------------------------
+*/
+Route::domain('analytics.panacea.live')->group(function () {
+    Route::get('/', 'PanalyticsController@showLanding')->name('panalytics_home');
+    Route::get('home', 'PanalyticsController@index')->name('panalytics_view');
     Route::post('panalytics_login', 'PanalyticsController@login');
     Route::post('panalytics_registration', 'PanalyticsController@registration');
     Route::get('panalytics_activation/{id}', 'PanalyticsController@activation');
     Route::post('panalytics_activation/{id}', 'PanalyticsController@processActivation');
     Route::post('panalytics_password/forgot', 'PanalyticsController@forgotPassword');
     Route::post('panalytics_password/reset', 'PanalyticsController@resetPassword');
-    Route::post('stats', [
-        'as' => 'stats',
-        'uses' => 'PanalyticsController@analysis'
-    ]);
-    Route::get('Panalyticslogout', [
-        'as' => 'Panalyticslogout',
-        'uses' => 'PanalyticsController@processLogout',
-    ]);
+    Route::post('stats', 'PanalyticsController@analysis')->name('stats');
+    Route::get('Panalyticslogout', 'PanalyticsController@processLogout')->name('Panalyticslogout');
 });
 
 /*
-* Public Routes ========================================================================================
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
 */
-// Real homepage route
-Route::get('/', [
-    'as' => 'home',
-    'uses' => 'FrontendController@showLanding',
-]);
 Route::get('/clear-cache', function() {
     Artisan::call('cache:clear');
     return "Cache is cleared";
 });
-// Prefer real controller if available; otherwise provide a working fallback
-// Fallbacks are disabled now that homepage is restored
-Route::get('optout/{phone_number}', [
-    'as' => 'optout',
-    'uses' => 'FrontendController@optoutCampaign',
-]);
 
-Route::post('optout/{phone_number}', [
-    'as' => 'optout',
-    'uses' => 'FrontendController@optoutCampaign',
-]);
-
-Route::post('response', [
-    'as' => 'response',
-    'uses' => 'FrontendController@verifyCode',
-]);
-Route::get('response', [
-    'as' => 'response',
-    'uses' => 'FrontendController@verifyCode',
-]);
-
-Route::get('report', [
-    'as' => 'report',
-    'uses' => 'FrontendController@showReport',
-]);
-Route::post('reportSubmit', [
-    'as' => 'submit',
-    'uses' => 'FrontendController@submitReport',
-]);
-
-Route::get('press', [
-    'as' => 'press',
-    'uses' => 'FrontendController@showMedia',
-]);
-
-Route::get('contact', [
-    'as' => 'contact',
-    'uses' => 'FrontendController@showContact',
-]);
-
-Route::post('contact', [
-    'as' => 'contactEmail',
-    'uses' => 'FrontendController@sendEmail',
-]);
-
-Route::get('logout', [
-    'as' => 'logout',
-    'uses' => 'AuthController@processLogout',
-]);
-Route::get('legal', [
-    'as' => 'legal',
-    'uses' => 'FrontendController@showLegal',
-]);
-
-Route::get('faq', [
-    'as' => 'faq',
-    'uses' => 'FrontendController@showFaq',
-]);
-
-Route::get('platforms', [
-    'as' => 'platforms',
-    'uses' => 'FrontendController@platformLink',
-]);
-Route::get('probmodel', [
-    'as' => 'probmodel',
-    'uses' => 'ProbabilisticModelController@index',
-]);
-Route::get('digitalwarranty', [
-    'as' => 'dw',
-    'uses' => 'FrontendController@dw',
-]);
+Route::get('/', 'FrontendController@showLanding')->name('home');
+Route::get('optout/{phone_number}', 'FrontendController@optoutCampaign')->name('optout');
+Route::post('optout/{phone_number}', 'FrontendController@optoutCampaign');
+Route::post('response', 'FrontendController@verifyCode')->name('response');
+Route::get('response', 'FrontendController@verifyCode');
+Route::get('report', 'FrontendController@showReport')->name('report');
+Route::post('reportSubmit', 'FrontendController@submitReport')->name('submit');
+Route::get('press', 'FrontendController@showMedia')->name('press');
+Route::get('contact', 'FrontendController@showContact')->name('contact');
+Route::post('contact', 'FrontendController@sendEmail')->name('contactEmail');
+Route::get('logout', 'AuthController@processLogout')->name('logout');
+Route::get('legal', 'FrontendController@showLegal')->name('legal');
+Route::get('faq', 'FrontendController@showFaq')->name('faq');
+Route::get('platforms', 'FrontendController@platformLink')->name('platforms');
+Route::get('probmodel', 'ProbabilisticModelController@index')->name('probmodel');
+Route::get('digitalwarranty', 'FrontendController@dw')->name('dw');
 
 /*
- * This is a function for sending multiple or dynamic bulk sms when necessary, so should be active only when such is needed.
-Route::get('bulksms', [
-    'as' => 'bulksms',
-    'uses' => 'ApiController@sendBulk',
-]);
+|--------------------------------------------------------------------------
+| User Dashboard
+|--------------------------------------------------------------------------
 */
-
-/*
-* User Dashboard ========================================================================
-*/
-Route::group(['middleware' => 'auth.user', 'prefix' => 'user'], function () {
-    Route::get('dashboard', [
-        'as' => 'user.dashboard',
-        'uses' => 'UserController@showDashboard',
-    ]);
-    Route::get('profile', [
-        'as' => 'user.profile',
-        'uses' => 'UserController@showProfile',
-    ]);
-    Route::get('profile/update', [
-        'as' => 'user.profile.form',
-        'uses' => 'UserController@showProfileForm',
-    ]);
-    Route::post('profile/update', [
-        'as' => 'user.profile.update',
-        'uses' => 'UserController@updateProfile',
-    ]);
-    Route::get('verify', [
-        'as' => 'user.verify',
-        'uses' => 'UserController@showVerifyForm',
-    ]);
+Route::middleware('auth.user')->prefix('user')->group(function () {
+    Route::get('dashboard', 'UserController@showDashboard')->name('user.dashboard');
+    Route::get('profile', 'UserController@showProfile')->name('user.profile');
+    Route::get('profile/update', 'UserController@showProfileForm')->name('user.profile.form');
+    Route::post('profile/update', 'UserController@updateProfile')->name('user.profile.update');
+    Route::get('verify', 'UserController@showVerifyForm')->name('user.verify');
     Route::post('verify', 'UserController@verifyCode');
 });
 
 
 
-// Disabled Facebook Messenger routes (controllers not present in local env)
-// Prevents boot errors when classes are missing
-Route::get('testmessenger', [
-    'as' => 'messengerTestGet',
-    'uses' => 'TestController@QrTest',
-]);
-Route::post('testmessenger', [
-    'as' => 'messengerTestPost',
-    'uses' => 'TestController@QrTest',
-]);
-
-// Route::get('qrcode', [
-//     'as' => 'qrget',
-//     'uses' => 'TestController@qrRead'
-// ]);
-
-// Route::post('qrsubmit', [
-//    'as' => 'qrpost',
-//    'uses' => 'TestController@qrPost'
-// ]);
-
-//});
-
 /*
-* API Route ==============================================================
+|--------------------------------------------------------------------------
+| API Routes v1 & v2
+|--------------------------------------------------------------------------
 */
-Route::group(['prefix' => 'api/v1'], function () {
+Route::prefix('api/v1')->group(function () {
     Route::post('login', 'ApiController@login');
     Route::post('registration', 'ApiController@registration');
     Route::post('password/forgot', 'ApiController@forgotPassword');
@@ -318,26 +133,35 @@ Route::group(['prefix' => 'api/v1'], function () {
     Route::post('activate/{id}', 'ApiController@processActivation');
 });
 
-Route::group(['prefix' => 'api/v2'], function () {
+Route::prefix('api/v2')->group(function () {
     Route::get('sms/verifytest', 'ApiController@verifySSLSmsCode');
 });
 
-
-//-----------Live Check Pro Routes by Ahmed-----------------------
+/*
+|--------------------------------------------------------------------------
+| LiveCheck Pro Routes
+|--------------------------------------------------------------------------
+*/
 Route::get('v/{code}', 'livecheckproController@urlCode');
 Route::post('/codeverify', 'livecheckproController@IsValidCode');
 Route::post('/phoneverify', 'livecheckproController@IsValidPhone');
 Route::post('/livecheck', 'livecheckproController@LiveCheck');
 Route::post('/resendcode', 'livecheckproController@ResendCode');
 
-//-----------MUPS Live Check Pro Routes by Arman------------------
+/*
+|--------------------------------------------------------------------------
+| MUPS LiveCheck Pro Routes
+|--------------------------------------------------------------------------
+*/
 Route::get('mups', 'livecheckproControllerMups@page')->name('mups');
 Route::get('mups-leaflet', 'livecheckproControllerMups@leaflet')->name('leaflet');
 Route::post('/mupslivecheck', 'livecheckproControllerMups@mlivecheck')->name('mupslivecheck');
 
-//-----------kumarika Live Check Pro Routes by Arman---------------
-// Disabled Kumarika livecheck routes: controller not present locally
-    
+/*
+|--------------------------------------------------------------------------
+| Locale Setting
+|--------------------------------------------------------------------------
+*/
 Route::get('set-locale/{locale}', function ($locale) {
     App::setLocale($locale);
     session()->put('locale', $locale);
