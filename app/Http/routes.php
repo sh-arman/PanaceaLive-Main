@@ -7,10 +7,10 @@ use Illuminate\Support\Facades\App;
 
 /*
 |--------------------------------------------------------------------------
-| Company Admin Dashboard - codes.panacea.live (LOCAL: /admin prefix)
+| Company Admin Dashboard - codes.panacea.live
 |--------------------------------------------------------------------------
 */
-Route::prefix('admin')->group(function () {
+Route::domain('codes.panacea.live')->group(function () {
     
     // Public login routes
     Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
@@ -55,6 +55,14 @@ Route::domain('m.panacea.live')->group(function () {
     });
 });
 
+Route::get('/', function () {
+    return Redirect::to('https://renata.panacea.live/');
+});
+
+
+
+
+
 /*
 |--------------------------------------------------------------------------
 | Panalytics Dashboard - analytics.panacea.live
@@ -78,6 +86,8 @@ Route::domain('analytics.panacea.live')->group(function () {
 | Public Routes
 |--------------------------------------------------------------------------
 */
+
+
 Route::get('/clear-cache', function() {
     Artisan::call('cache:clear');
     return "Cache is cleared";
