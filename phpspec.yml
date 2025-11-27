@@ -1,0 +1,5 @@
+suites:
+    main:
+        namespace: Panacea
+        psr4_prefix: Panacea
+        src_path: app

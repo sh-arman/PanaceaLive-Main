@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="202" height="121.01" viewBox="0 0 202 121.01">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#linear-gradient);
+      }
+
+      .cls-2 {
+        filter: url(#tick_1_);
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="0.699" y1="0.374" x2="0.297" y2="1.517" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#64f877"/>
+      <stop offset="1" stop-color="#088e19"/>
+    </linearGradient>
+    <filter id="tick_1_" x="0" y="0" width="202" height="121.01" filterUnits="userSpaceOnUse">
+      <feOffset dx="7" dy="6" input="SourceAlpha"/>
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feFlood flood-opacity="0.161"/>
+      <feComposite operator="in" in2="blur"/>
+      <feComposite in="SourceGraphic"/>
+    </filter>
+  </defs>
+  <g class="cls-2" transform="matrix(1, 0, 0, 1, 0, 0)">
+    <path id="tick_1_2" data-name="tick (1)" class="cls-1" d="M142.99,11.462,131.528,0,79.99,51.538,91.452,63ZM177.457,0,91.452,86.005l-33.979-33.9L46.01,63.569,91.452,109.01,189,11.462ZM0,63.569,45.441,109.01,56.9,97.548,11.543,52.107Z"/>
+  </g>
+</svg>

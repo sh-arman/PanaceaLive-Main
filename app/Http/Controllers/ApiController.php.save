@@ -1,0 +1,776 @@
+<?php
+
+namespace Panacea\Http\Controllers;
+
+use Cartalyst\Sentinel\Checkpoints\NotActivatedException;
+use Cartalyst\Sentinel\Checkpoints\ThrottlingException;
+use Cartalyst\Sentinel\Laravel\Facades\Activation;
+use Cartalyst\Sentinel\Laravel\Facades\Reminder;
+use Cartalyst\Sentinel\Laravel\Facades\Sentinel;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
+use Panacea\Code;
+use Panacea\Order;
+use Panacea\Check;
+use Panacea\User;
+use Panacea\SMS_records;
+use SoapClient;
+
+class ApiController extends Controller
+{
+    /**
+     * login.
+     *
+     * @param Request $request
+     *
+     * @return Response
+     */
+    public function login(Request $request)
+    {
+        $request->phone_number = str_replace('+', '', $request->phone_number);
+        if (strlen($request->phone_number) == 11) {
+            $request->phone_number = '88' . $request->phone_number;
+        }
+
+        // The provided data are valid, authenticate the user...
+        $credentials = [
+            'phone_number' => $request->phone_number,
+            'password' => $request->password,
+        ];
+
+        try {
+            if ($user = Sentinel::authenticate($credentials)) {
+                Sentinel::login($user);
+
+                if(isset($_COOKIE["non_loggedin_code"]) && Sentinel::getUser()) {
+                    if(!empty($_COOKIE["non_loggedin_code"])) {
+                        // return redirect()->route('mresponse');
+                        return response()->json(['success' => true, 'role' => 'user']);
+                    }
+                    else {
+                        $data = [];
+                        $data['page_title'] = 'Panacea. Verify your medicine';
+                        $data['meta_desc'] = 'Panacea provides the tools to the consumers with which they can verify the authenticity of their medicine. ';
+
+                        return response()->json(['success' => true, 'role' => 'user']);
+                    }
+                }else {
+                    return response()->json(['success' => true, 'role' => 'user']);
+                }
+            }
+        } catch (NotActivatedException $e) {
+            $user = $e->getUser();
+            return response()->json(['error' => 'Account is not activated!', 'id' => $user->id]);
+        } catch (ThrottlingException $e) {
+          //  $delay = $e->getDelay();
+          //  return response()->json(['error' => 'Your account is blocked for ' . ceil($delay / 60) . ' minutes']);
+        }
+
+        if (User::where('phone_number', $request->phone_number)->first()) {
+            return response()->json(['error' => 'Invalid phone number or password']);
+        } elseif (Check::where([
+            'phone_number' => $request->phone_number,
+            'source' => 'web',
+        ])->first()
+        ) {
+            return response()->json(['error' => 'We have lost a few of our user profiles due to an error. We apologize sincerely for the inconvenience. We need you to please register with us again. It won\'t take long.']);
+        } else {
+            return response()->json(['error' => 'User not found']);
+        }
+    }
+
+    /**
+     * registration.
+     *
+     * @param Request $request
+     *
+     * @return Response
+     */
+    public function registration(Request $request)
+    {
+        $request->phone_number = str_replace('+', '', $request->phone_number);
+        if (strlen($request->phone_number) == 11) {
+            $request->phone_number = '88' . $request->phone_number;
+        }
+
+        // The provided data are valid, create the user...
+        $credentials = [
+            'phone_number' => $request->phone_number,
+            'password' => $request->password,
+        ];
+
+        try {
+            if ($user = Sentinel::register($credentials)) {
+                Activation::removeExpired();
+                $activation = Activation::create($user);
+
+                $codeActive = substr($activation->code,0,4);
+                $codeActive = strtoupper($codeActive);
+
+                $role = Sentinel::findRoleByName('User');
+                $role->users()->attach($user);
+
+                $phone_number = urlencode($request->phone_number);
+                $message = 'Your code is ' . $codeActive . '. Welcome to Panacea. Happy Verification!';
+                $sms_response = $this->sendSms($phone_number, $message);
+
+                return response()->json(['id' => $user->id, 'success' => true, 'sms_response' => $sms_response]);
+            } else {
+                return response()->json(['error' => 'Failed to register']);
+            }
+        } catch (QueryException $e) {
+            return response()->json(['error' => 'User is already registered']);
+        }
+    }
+
+    /**
+     * send activation.
+     *
+     * @param int $id
+     *
+     * @return Response
+     */
+    public function sendActivation($id)
+    {
+        if ($user = Sentinel::findById($id)) {
+            Activation::remove($user);
+            Activation::removeExpired();
+            $activation = Activation::create($user);
+
+            $codeActive = substr($activation->code,0,4);
+            $codeActive = strtoupper($codeActive);
+
+            $phone_number = urlencode($user->phone_number);
+            $message = 'Your code is ' . $codeActive . '. Welcome to Panacea. Happy Verification!';
+            $sms_response = $this->sendSms($phone_number, $message);
+
+            return response()->json(['id' => $user->id, 'success' => true, 'sms_response' => $sms_response]);
+        } else {
+            return response()->json(['error' => 'Failed to activate']);
+        }
+    }
+
+    /**
+     * Process activation.
+     *
+     * @param int $id
+     * @param Request $request
+     *
+     * @return Response
+     */
+    public function processActivation($id, Request $request)
+    {
+        $user = Sentinel::findById($id);
+
+        if (!Activation::complete($user, strtoupper($request->code))) {
+            return response()->json(['error' => 'Invalid or expired activation code.']);
+        }
+
+        Sentinel::login($user);
+        return response()->json(['success' => 'Account activated']);
+    }
+
+    /**
+     * Forgot password code request.
+     *
+     * @param Request $request
+     *
+     * @return Response
+     */
+    public function forgotPassword(Request $request)
+    {
+        $phone_number = str_replace('+', '', $request->phone_number);
+        if (strlen($phone_number) == 11) {
+            $phone_number = '88' . $phone_number;
+        }
+
+        if ($user = User::where('phone_number', $phone_number)->first()) {
+            $user = Sentinel::findById($user->id);
+            Reminder::removeExpired();
+
+            if (!Reminder::exists($user)) {
+                $reminder = Reminder::create($user);
+            } else {
+                $reminder = Reminder::exists($user);
+            }
+
+            $codeActive = substr($reminder->code,0,4);
+            $codeActive = strtoupper($codeActive);
+
+            $message = 'Your code is ' . $codeActive . '. Use this code for resetting your password. Happy Verification. ';
+            $sms_response = $this->sendSms($phone_number, $message);
+
+            return response()->json(['success' => $reminder->code, 'sms_response' => $sms_response]);
+
+        } else {
+            $message = 'Sorry. This number is not registered with us.';
+            return response()->json(['error' => $message]);
+        }
+    }
+
+    /**
+     * Reset the password.
+     *
+     * @param Request $request
+     *
+     * @return Response
+     */
+    public function resetPassword(Request $request)
+    {
+        $phone_number = str_replace('+', '', $request->phone_number);
+        if (strlen($phone_number) == 11) {
+            $phone_number = '88' . $phone_number;
+        }
+
+        if ($user = User::where('phone_number', $phone_number)->first()) {
+            $user = Sentinel::findById($user->id);
+
+            if ($reminder = Reminder::complete($user, $request->code, $request->password)) {
+                return response()->json(['success' => $reminder]);
+            } else {
+                $message = 'The provided code is not correct for the provided number.';
+                return response()->json(['error' => $message]);
+            }
+        } else {
+            $message = 'Sorry. This number is not registered with us.';
+            return response()->json(['error' => $message]);
+        }
+    }
+
+    /**
+     * Verify via SMS
+     *
+     * @param Request $request
+     * @return \Illuminate\Contracts\Routing\ResponseFactory|\Symfony\Component\HttpFoundation\Response
+     */
+    public function verifytestSmsCode(Request $request)
+    {
+        $start = microtime(true);
+
+        if (strlen($request->mn) > 9 &&
+            $request->client_id == 'panacea' &&  strlen($request->transid) > 0 ) {
+
+            echo "OK";
+	$message = "আমাদের সার্ভারে হালনাগাদ চলায় কিছুক্ষন সার্ভিসটি বন্ধ আছে। অল্প সময়ের মধ্যে এটি পুনরায় চালু হবে - ধন্যবাদ ।";
+            sendSms($phone_number, $message, $mask = 'Panacea');
+            $message = "Hi, our servers are currently being updated. Thus, the service is unavailable. It should be resuming again shortly. Thank you.";
+//            $phone_number = str_replace(' ', '', $request->mn);
+//            $phone_number = str_replace('+', '', $phone_number);
+//            if (strlen($phone_number) == 11) {
+//                $phone_number = '88' . $phone_number;
+//            }
+//
+//            $sms_code = strtoupper($request->msg);
+//            //$sms_code =  substr(strstr($sms_code," "), 1);
+//            //$sms_code = preg_replace('/[^a-zA-Z0-9]/', '', $sms_code);
+//            $sms_code = preg_replace('/[^a-zA-Z0-9]/', '', $sms_code);
+
+//            $first_three = substr($sms_code,0,3);
+
+            if($first_three == 'PBN' ){
+                $modified = substr($sms_code,3);
+                $sms_code = $modified;
+            }
+
+            /* if the code is not valid */
+            if (strlen($sms_code) < 6 || strlen($sms_code) > 7) {
+                $data = [
+                    'phone_number' => $phone_number,
+                    'code' => $sms_code,
+                    'remarks' => 'invalid code',
+                    'source' => 'sms',
+                ];
+                // record the check history
+                Check::create($data);
+
+                $message = 'You have sent a ' . strlen($sms_code) .
+                    '-character code. Every Panacea Verified medicine carries a 6 or 7-character code. Would you please retype the code and send again. Thanks!';
+                $banglaMsg = 'আপনি একটি '. $this->getBanglaNum(strlen($sms_code)) .' অক্ষরের কোড পাঠিয়েছেন। প্রতিটি '.  'Panacea Live '. ' কোড ৬ বা ৭ অক্ষরের হয়ে থাকে। আপনি কোডটি চেক করে আবার পাঠাতে পারেন। ধন্যবাদ।
+ ';
+            } else {
+                if ($code = Code::where('code', $sms_code)->whereNotIn('status',[0])->first()) {
+                    /* if the code is already verified by someone */
+                    if ($check = Check::where('code', $sms_code)->orderBy('created_at', 'asc')->first()) {
+                        if ($check->phone_number == $phone_number) {
+                            $order = Order::find($code->status);
+                            $company_name = explode(" ", $order->company->company_name);
+                            $company_name = $company_name[0];
+                            $med_type = $order->medicine->medicine_type;
+                            if($med_type=='Tablet') $med_bangla_type = 'ট্যাবলেট';
+                            else $med_bangla_type = 'ক্যাপসুল';
+                            $message = "This medicine is Panacea Verified. It is manufactured by " .
+                                $company_name . ", named " .
+                                $order->medicine->medicine_name . " " .
+                                $order->medicine->medicine_dosage . " and expires on " .
+                                $order->expiry_date->format('M Y') . ".\nYou can now verify on FB - visit me.panacea.live";
+                                $banglaMsg = 'এই ওষুধটি আসল। ইহা '.$this->getBanglaCompany($company_name).
+                                    ' কর্তৃক প্রস্তুতকৃত। ওষুধটির নাম'. ' '.
+                            $order->medicine->medicine_name . ' ' . $order->medicine->medicine_dosage .
+                                    ' এবং এর মেয়াদ উত্তীর্ণের সময় '. $this->getBanglaMonth($order->expiry_date->format('M')) . ', '
+                                . $this->getBanglaNum($order->expiry_date->format('Y')) . '।';
+                        } else {
+                            $check->phone_number = substr($check->phone_number, 2);
+                            $message = 'This medicine was first verified on ' .
+                                $check->created_at->format('M Y') . ' from ' .
+                                $this->maskPhoneNumber($check->phone_number, 5, 3, '*') .
+                                '. We advise you against its use if it was not verified by you or someone you know.';
+                            $maskedNum = $this->maskPhoneNumber($check->phone_number, 5, 3, '*');
+                            $createdDate = explode(" ",$check->created_at);
+                             $banglaMsg = 'এই ওষুধটি প্রথম যাচাই করা হয়েছিল'.' ' .
+                                 $this->getBanglaMonth($check->created_at->format('M')) . ' '
+                                 . $this->getBanglaNum($check->created_at->format('Y')).
+                                 ' -তে ' . $this->getBanglaNum($maskedNum) .
+                            ' নম্বর থেকে। উপরোক্ত ফোন নম্বরটি আপনার পরিচিত না হলে ওষুধটি খাওয়া হতে বিরত থাকুন।';
+                        }
+
+                        $data = [
+                            'phone_number' => $phone_number,
+                            'code' => $sms_code,
+                            'remarks' => 'already verified',
+                            'source' => 'sms',
+                        ];
+                        // record the check history
+                        Check::create($data);
+                    } else {
+                        /* if the code is verified for first time */
+                        $order = Order::find($code->status);
+                        $company_name = explode(" ", $order->company->company_name);
+                        $company_name = $company_name[0];
+                        $med_type = $order->medicine->medicine_type;
+                        if($med_type=='Tablet') $med_bangla_type = 'ট্যাবলেট';
+                        else $med_bangla_type = 'ক্যাপসুল';
+                        $message = "This medicine is Panacea Verified. It is manufactured by " .
+                            $company_name . ", named " .
+                            $order->medicine->medicine_name . " " .
+                            $order->medicine->medicine_dosage . " and expires on " .
+                            $order->expiry_date->format('M Y') . ".\nYou can now verify on FB - visit me.panacea.live";
+                        $banglaMsg = 'এই ওষুধটি আসল। ইহা '.$this->getBanglaCompany($company_name).
+                            ' কর্তৃক প্রস্তুতকৃত। ওষুধটির নাম'. ' '.
+                            $order->medicine->medicine_name . ' ' . $order->medicine->medicine_dosage.
+                            ' এবং এর মেয়াদ উত্তীর্ণের সময় '. $this->getBanglaMonth($order->expiry_date->format('M')) . ', '
+                            . $this->getBanglaNum($order->expiry_date->format('Y')) . '।';
+                        $data = [
+                            'phone_number' => $phone_number,
+                            'code' => $sms_code,
+                            'remarks' => 'verified first time',
+                            'source' => 'sms',
+                        ];
+                        // record the check history
+                        Check::create($data);
+                    }
+                    /* if the code is not listed by us */
+                } else {
+                    if($sms_code=='MCKRTW'){
+                        $message = 'Hi, this code was used only for the advertisement. You will find unique codes on Maxpro 20mg & Rolac 10mg tablets during your purchase. Happy verification! ';
+                        $banglaMsg = 'এই কোডটি শুধুমাত্র বিজ্ঞাপনের জন্য ব্যবহৃত হয়েছিল। আপনি প্রতিটি ম্যাক্সপ্রো ২০mg  এবং রোলাক ১০mg ট্যাবলেটের পাতায় ইউনিক কোড দেখতে পাবেন। ধন্যবাদ!';
+                    }else {
+
+                        $message = 'This is not the right code. Please try again with the right code including PBN.';
+                        $banglaMsg = 'এই কোডটি সঠিক নয়, PBN সহ সঠিক কোডটি দিয়ে আবার চেষ্টা করুন।';
+                    }
+                    $data = [
+                        'phone_number' => $phone_number,
+                        'code' => $sms_code,
+                        'remarks' => 'medicine not listed',
+                        'source' => 'sms',
+                    ];
+                    // record the check history
+                    Check::create($data);
+                }
+            }
+
+            $myHTTPURL = 'http://202.74.240.166:8076/content_callback.aspx?';
+            $myHTTPURL .= 'client_id=panacea&shortcode=2777';
+            $myHTTPURL .= '&msisdn='.$phone_number.'&key_word=PBN';
+            $myHTTPURL .= '&transid='.$request->transid.'&msg='.urlencode($message);
+            $myHTTPURL .= '&service_id='.$request->serviceid;
+
+            $ch = curl_init($myHTTPURL);
+            curl_setopt($ch, CURLOPT_HEADER, 0);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            $response = curl_exec($ch);
+            curl_close($ch);
+
+            $end = microtime(true);
+            $time = number_format(($end - $start), 2);
+            if($response=='OK') {
+
+                //$first_five = substr($request->mn,0,5);
+                //if($first_five=='88015'){
+                    $this->sendSms($request->mn,$banglaMsg);
+                //}
+                $data = [
+                    'transaction_id' => $request->transid,
+                    'message' => $request->msg,
+                    'service_id' => $response,
+                    'mobile_no' => $request->mn,
+                    'completed' => 1,
+                    'exec_time' => $time
+                ];
+                SMS_records::create($data);
+            }else{
+
+                $this->sendSms($request->mn,$banglaMsg);
+                $data = [
+                    'transaction_id' => $request->transid,
+                    'message' => $request->msg,
+                    'service_id' => $response,
+                    'mobile_no' => $request->mn,
+                    'completed' => 1,
+                    'exec_time' => $time
+                ];
+
+                SMS_records::create($data);
+            }
+           // return $response;
+
+        } else {
+         //   $end = microtime(true);
+         //   $time = number_format(($end - $start), 2);
+
+            $data = [
+                'transaction_id' => $request->transid,
+                'message' => $request->msg,
+                'mobile_no' => $request->mn,
+                'completed' => 1,
+                'exec_time' => 0
+            ];
+
+            SMS_records::create($data);
+            echo "Unauthorized";
+        }
+
+
+
+    }
+
+    /**
+     * Old SMS verification, not in use now
+     * @param Request $request
+     * @return \Illuminate\Contracts\Routing\ResponseFactory|\Symfony\Component\HttpFoundation\Response
+     */
+    public function verifySmsCode(Request $request)
+    {
+        if (strlen($request->referrer) > 0 && strlen($request->mn) > 9 && $request->referrer == 'wintel') {
+
+            $phone_number = str_replace('+', '', $request->mn);
+            if (strlen($phone_number) == 11) {
+                $phone_number = '88' . $phone_number;
+            }
+
+            $sms_code = strtoupper($request->msg);
+            $sms_code =  substr(strstr($sms_code," "), 1);
+            $sms_code = preg_replace('/[^a-zA-Z0-9]/', '', $sms_code);
+
+            /* if the code is not valid */
+            if (strlen($sms_code) < 6 || strlen($sms_code) > 7) {
+                $data = [
+                    'phone_number' => $phone_number,
+                    'code' => $sms_code,
+                    'remarks' => 'invalid code',
+                    'source' => 'sms',
+                ];
+                // record the check history
+                Check::create($data);
+
+                $message = 'You have sent a ' . strlen($sms_code) .
+                    '-character code. Every Panacea Verified medicine carries a 6 or 7-character code. Would you please retype the code & send again. Thanks!';
+            } else {
+                if ($code = Code::where('code', $sms_code)->first()) {
+                    /* if the code is already verified by someone */
+                    if ($check = Check::where('code', $sms_code)->orderBy('created_at', 'asc')->first()) {
+                        if ($check->phone_number == $phone_number) {
+                            $order = Order::find($code->status);
+                            $company_name = explode(" ", $order->company->company_name);
+                            $company_name = $company_name[0];
+                            $message = 'This medicine is Panacea Verified. It is manufactured by ' .
+                                $company_name . ', named ' .
+                                $order->medicine->medicine_name . ' ' .
+                                $order->medicine->medicine_dosage . ' and expires on ' .
+                                $order->expiry_date->format('M Y') . '.';
+                        } else {
+                            $check->phone_number = substr($check->phone_number, 2);
+                            $message = 'This medicine was first verified on ' .
+                                $check->created_at->format('M Y') . ' from ' .
+                                $this->maskPhoneNumber($check->phone_number, 5, 3, '*') .
+                                '. We advise you against its use if it was not verified by you or someone you know.';
+                        }
+
+                        $data = [
+                            'phone_number' => $phone_number,
+                            'code' => $sms_code,
+                            'remarks' => 'already verified',
+                            'source' => 'sms',
+                        ];
+                        // record the check history
+                        Check::create($data);
+                    } else {
+                        /* if the code is verified for first time */
+                        $order = Order::find($code->status);
+                        $company_name = explode(" ", $order->company->company_name);
+                        $company_name = $company_name[0];
+                        $message = 'This medicine is Panacea Verified. It is manufactured by ' .
+                            $company_name . ', named ' .
+                            $order->medicine->medicine_name . ' ' .
+                            $order->medicine->medicine_dosage . ' and expires on ' .
+                            $order->expiry_date->format('M Y') . '.';
+
+                        $data = [
+                            'phone_number' => $phone_number,
+                            'code' => $sms_code,
+                            'remarks' => 'verified first time',
+                            'source' => 'sms',
+                        ];
+                        // record the check history
+                        Check::create($data);
+                    }
+                    /* if the code is not listed by us */
+                } else {
+                    $message = 'This is not the right code. Please try again with the right code including PBN.';
+
+                    $data = [
+                        'phone_number' => $phone_number,
+                        'code' => $sms_code,
+                        'remarks' => 'medicine not listed',
+                        'source' => 'sms',
+                    ];
+                    // record the check history
+                    Check::create($data);
+                }
+            }
+
+            return response($message, 200);
+        } else {
+            return response('Unauthorized', 401);
+        }
+    }
+
+    /**
+     * Send SMS using SMS gateway.
+     *
+     * @param $phone_number
+     * @param $message
+     * @param string $mask
+     * @return mixed
+     */
+    protected function sendSms($phone_number, $message, $mask = 'Panacea')
+    {
+       /* $username = 'buzzally285';
+        $password = 'monenai1123';
+
+        $myHTTPURL = 'http://app.planetgroupbd.com/api/sendsms/plain?';
+        $myHTTPURL .= 'user=' . $username . '&password=' . $password;
+        $myHTTPURL .= '&sender=' . $mask;
+        $myHTTPURL .= '&GSM=' . urlencode($phone_number);
+        $myHTTPURL .= '&SMSText=' . urlencode($message);
+
+        $ch = curl_init($myHTTPURL);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $response = curl_exec($ch);
+        curl_close($ch);
+
+        return $response;
+       */
+
+        try {
+            $soapClient = new SoapClient("https://api2.onnorokomSMS.com/sendSMS.asmx?wsdl");
+            $paramArray = array( 'userName'=>"01675430523",
+                'userPassword'=>"tapos99", 'mobileNumber'=> $phone_number,
+                'smsText'=>$message, 'type'=>"TEXT",
+                'maskName'=> "Panacea", 'campaignName'=>'', );
+
+            $value = $soapClient->__call("OneToOne", array($paramArray));
+            //var_dump($value);
+        }
+        catch (Exception $e)
+        {
+            echo $e;
+        }
+    }
+
+    /**
+     * Bulk dynamic according to need
+     */
+
+    public function sendBulk(){
+        $row = 1;
+        if (($handle = fopen("codes/sms_to_panacea.csv", "r")) !== FALSE) {
+            while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                $row++;
+                $date = explode(" ", $data[2]);
+                $dateOnly = explode("-", $date[0]);
+                $sendDate = $dateOnly[1];
+                $firstMessage = "Hi, Panacea sent a mistaken response to the code you verified on Oct " .$sendDate .". It was a human error and we solved it. Thanks for your patience. Below is the code and it's correct response. If you have any queries please call +8801820555512.\n";
+                $phone_number = $data[0];
+                $userMessage = $data[1];
+
+                $sms_code = strtoupper($userMessage);
+                $sms_code = preg_replace('/[^a-zA-Z0-9]/', '', $sms_code);
+
+                $first_three = substr($sms_code,0,3);
+
+                if($first_three == 'PBN' ){
+                    $modified = substr($sms_code,3);
+                    $sms_code = $modified;
+                }
+
+                $firstMessage = $firstMessage . " CODE SENT: " .$sms_code. "\n";
+
+                /* if the code is not valid */
+                if (strlen($sms_code) < 6 || strlen($sms_code) > 7) {
+                    $data = [
+                        'phone_number' => $phone_number,
+                        'code' => $sms_code,
+                        'remarks' => 'invalid code',
+                        'source' => 'sms',
+                    ];
+                    // record the check history
+                    Check::create($data);
+
+                    $message = 'You have sent a ' . strlen($sms_code) .
+                        '-character code. Every Panacea Verified medicine carries a 6 or 7-character code. Would you please retype the code and send again. Thanks!';
+                    $banglaMsg = 'আপনি একটি '. $this->getBanglaNum(strlen($sms_code)) .' অক্ষরের কোড পাঠিয়েছেন। প্রতিটি '.  'Panacea Live '. ' কোড ৬ বা ৭ অক্ষরের হয়ে থাকে। আপনি কোডটি চেক করে আবার পাঠাতে পারেন। ধন্যবাদ।
+ ';
+                } else {
+                    if ($code = Code::where('code', $sms_code)->whereNotIn('status',[0])->first()) {
+                        /* if the code is already verified by someone */
+                        if ($check = Check::where('code', $sms_code)->orderBy('created_at', 'asc')->first()) {
+                            if ($check->phone_number == $phone_number) {
+                                $order = Order::find($code->status);
+                                $company_name = explode(" ", $order->company->company_name);
+                                $company_name = $company_name[0];
+                                $message = "This medicine is Panacea Verified. It is manufactured by " .
+                                    $company_name . ", named " .
+                                    $order->medicine->medicine_name . " " .
+                                    $order->medicine->medicine_dosage . " and expires on " .
+                                    $order->expiry_date->format('M Y') . ".\nYou can now verify on FB - visit me.panacea.live";
+                                $banglaMsg = 'এই ওষুধটি আসল। ইহা '.$this->getBanglaCompany($company_name).
+                                    ' কর্তৃক প্রস্তুতকৃত। ওষুধটির নাম'. ' '.
+                                    $order->medicine->medicine_name . ' ' . $order->medicine->medicine_dosage.
+                                    ' ট্যাবলেট এবং এর মেয়াদ উত্তীর্ণের সময় '. $this->getBanglaMonth($order->expiry_date->format('M')) . ', '
+                                    . $this->getBanglaNum($order->expiry_date->format('Y')) . '।';
+                            } else {
+                                $check->phone_number = substr($check->phone_number, 2);
+                                $message = 'This medicine was first verified on ' .
+                                    $check->created_at->format('M Y') . ' from ' .
+                                    $this->maskPhoneNumber($check->phone_number, 5, 3, '*') .
+                                    '. We advise you against its use if it was not verified by you or someone you know.';
+                                $maskedNum = $this->maskPhoneNumber($check->phone_number, 5, 3, '*');
+                                $createdDate = explode(" ",$check->created_at);
+                                $banglaMsg = 'এই ওষুধটি প্রথম যাচাই করা হয়েছিল'.' ' .
+                                    $this->getBanglaMonth($check->created_at->format('M')) . ' '
+                                    . $this->getBanglaNum($check->created_at->format('Y')).
+                                    ' -তে ' . $this->getBanglaNum($maskedNum) .
+                                    ' নম্বর থেকে। উপরোক্ত ফোন নম্বরটি আপনার পরিচিত না হলে ওষুধটি খাওয়া হতে বিরত থাকুন।';
+                            }
+
+                            $data = [
+                                'phone_number' => $phone_number,
+                                'code' => $sms_code,
+                                'remarks' => 'already verified',
+                                'source' => 'sms',
+                            ];
+                            // record the check history
+                            Check::create($data);
+                        } else {
+                            /* if the code is verified for first time */
+                            $order = Order::find($code->status);
+                            $company_name = explode(" ", $order->company->company_name);
+                            $company_name = $company_name[0];
+                            $message = "This medicine is Panacea Verified. It is manufactured by " .
+                                $company_name . ", named " .
+                                $order->medicine->medicine_name . " " .
+                                $order->medicine->medicine_dosage . " and expires on " .
+                                $order->expiry_date->format('M Y') . ".\nYou can now verify on FB - visit me.panacea.live";
+                            $banglaMsg = 'এই ওষুধটি আসল। ইহা '.$this->getBanglaCompany($company_name).
+                                ' কর্তৃক প্রস্তুতকৃত। ওষুধটির নাম'. ' '.
+                                $order->medicine->medicine_name . ' ' . $order->medicine->medicine_dosage.
+                                ' ট্যাবলেট এবং এর মেয়াদ উত্তীর্ণের সময় '. $this->getBanglaMonth($order->expiry_date->format('M')) . ', '
+                                . $this->getBanglaNum($order->expiry_date->format('Y')) . '।';
+                            $data = [
+                                'phone_number' => $phone_number,
+                                'code' => $sms_code,
+                                'remarks' => 'verified first time',
+                                'source' => 'sms',
+                            ];
+                            // record the check history
+                            Check::create($data);
+                        }
+                        /* if the code is not listed by us */
+                    } else {
+                        $message = 'This medicine is fake  and we advise you not to use it.';
+                        $banglaMsg = 'এই ওষুধটি আসল নয়। এটি খাওয়া হতে বিরত থাকুন।';
+                        $data = [
+                            'phone_number' => $phone_number,
+                            'code' => $sms_code,
+                            'remarks' => 'medicine not listed',
+                            'source' => 'sms',
+                        ];
+                        // record the check history
+                        Check::create($data);
+                    }
+                }
+                $message = "CORRECT RESPONSE: " . $message;
+
+                $message = $firstMessage . " " . $message;
+                $this->sendSms($phone_number,$message);
+                //$this->sendSms($phone_number,$banglaMsg);
+
+            }
+            fclose($handle);
+        }
+    }
+    /**
+     * Mask phone number
+     *
+     * @param $phone_number
+     * @param $start
+     * @param $end
+     * @param string $char
+     * @return string
+     */
+    protected function maskPhoneNumber($phone_number, $start, $end, $char = 'X')
+    {
+        $length = strlen($phone_number);
+        $repeats = $length - $start - $end;
+        $mask = substr($phone_number, 0, $start) . str_repeat($char, $repeats) . substr($phone_number, -$end);
+
+        return $mask;
+    }
+
+    /**
+     * Output Company name in Bangla
+     * @param $companyName
+     * @return mixed
+     */
+    public function getBanglaCompany($companyName){
+        $companyNameList = ['renata','square'];
+        $companyNameListBangla = ['রেনাটা','স্কয়ার'];
+        $key = array_search($companyName,$companyNameList);
+        return $companyNameListBangla[$key];
+    }
+
+    /**
+     * Output month names in Bangla
+     * @param $monthName
+     * @return mixed
+     */
+    public function getBanglaMonth($monthName){
+        $monthList = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        $monthListBangla = ['জানুয়ারী','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+        $key = array_search($monthName,$monthList);
+        return $monthListBangla[$key];
+    }
+
+    /**
+     * Output numbers in Bangla
+     * @param $year
+     * @return mixed
+     */
+    public function getBanglaNum($year){
+        $bn_digits = array('০','১','২','৩','৪','৫','৬','৭','৮','৯');
+        $output = str_replace(range(0, 9),$bn_digits, $year);
+        return $output;
+    }
+}

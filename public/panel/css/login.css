@@ -1,0 +1,58 @@
+body{
+	font-family: 'Roboto';
+}
+
+#login .col-md-4{
+	background-color: #ffffff;
+	border-radius: 4px;
+	color: #222328;
+	margin-top: 18%;
+	font-weight: 300;
+}
+#login .col-md-4 h2{
+	font-weight: 300;
+	margin-top: 0;
+}
+#login .col-md-4 h5{
+	padding-top: 10px;
+}
+#login .col-md-4 h4 a{
+	color: #2461cc;
+	text-decoration: none;
+}
+#login .col-md-4 .form-control{
+	background-color: transparent;
+	border: 1px solid #bbbbbb;
+	color: #222328;
+	text-align: center;
+	box-shadow: none;
+	font-size: 20px;
+	height: auto;
+	margin: 20px 0;
+	padding: 12px 18px;
+	transition: 300ms all;
+	color: #2461cc;
+}
+#login .col-md-4 .form-control:hover{
+	border-color: #aaaaaa;
+}
+#login .col-md-4 .form-control:active,
+#login .col-md-4 .form-control:focus{
+	border-color: #2461cc;
+	box-shadow: none;
+}
+#login .col-md-4 .btn,
+#login .col-md-4 .btn:hover,
+#login .col-md-4 .btn:focus,
+#login .col-md-4 .btn:active{
+	background-color: #2461cc;
+	border-radius: 4px;
+	color: #ffffff;
+	border: 0;
+	outline: 0;
+	box-shadow: none;
+	font-size: 18px;
+	padding: 6px 18px;
+	width: 100%;
+	font-weight: 300;
+}

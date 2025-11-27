@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1926" height="421" viewBox="0 0 1926 421">
+  <defs>
+    <clipPath id="clip-path">
+      <rect id="Rectangle_1" data-name="Rectangle 1" width="1926" height="421" transform="translate(-6)" fill="#fff"/>
+    </clipPath>
+    <linearGradient id="linear-gradient" y1="0.5" x2="1" y2="0.5" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#faae66"/>
+      <stop offset="1" stop-color="#faae67"/>
+      <stop offset="1" stop-color="#f79868"/>
+      <stop offset="1" stop-color="#f7904e"/>
+      <stop offset="1" stop-color="#fcbf94"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="0.391" y1="0.502" x2="0.005" y2="1.086" gradientUnits="objectBoundingBox">
+      <stop offset="1" stop-color="#f7914f"/>
+      <stop offset="1" stop-color="#f7d6bf"/>
+    </linearGradient>
+  </defs>
+  <g id="hero" transform="translate(6)">
+    <g id="Mask_Group_1" data-name="Mask Group 1" clip-path="url(#clip-path)">
+      <g id="Layer_1" data-name="Layer 1" transform="translate(-6.098)">
+        <g id="Group_29" data-name="Group 29" transform="translate(0)">
+          <path id="Path_1" data-name="Path 1" d="M1926.1,0V310.16C1678.668,365.086,1307.2,400,891.717,400,555.664,400,248.2,377.144,12,339.311c-4.02-.643-8.039-1.237-12-1.942l12,1.509V0Z" transform="translate(0)" fill="url(#linear-gradient)"/>
+        </g>
+        <path id="Path_2" data-name="Path 2" d="M1924.607,1.643V250.6c-237.136,72.241-673.852,120.712-1173.633,120.712C486.047,371.479,226.3,357.482,1.88,330.95V0H1918.967C1921.018.544,1922.813,1.087,1924.607,1.643Z" transform="translate(1.49)" fill="url(#linear-gradient-2)"/>
+        <path id="Path_3" data-name="Path 3" d="M0,272.78l3.37,2.187v.663C2.241,274.662,1.112,273.73,0,272.78Z" transform="translate(0 36.434)" fill="#fff"/>
+      </g>
+    </g>
+  </g>
+</svg>

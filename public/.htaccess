@@ -1,0 +1,29 @@
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews
+    </IfModule>
+
+    RewriteEngine On
+
+    # Redirect Trailing Slashes...
+    RewriteRule ^(.*)/$ /$1 [L,R=301]
+
+    # Handle Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+
+
+
+RewriteCond %{HTTP_HOST} ^(.*)\.panacealive\.xyz [NC]
+RewriteRule ^(.*)$ http://%1.panacea.live/$1 [R=301,L]
+
+    #Handle www to non-www
+
+RewriteCond %{HTTP_HOST} ^www\.(.*)$ [NC]
+RewriteRule ^(.*)$ http://%1/$1 [R=301,L]
+
+#    RewriteCond %{HTTP_HOST} ^www\.([^.]+\.panacea\.live)$ [NC]
+#    RewriteRule ^ http://%1%{REQUEST_URI} [R=301,L]
+
+</IfModule>
