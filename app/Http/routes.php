@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\App;
 Route::domain('codes.panacea.live')->group(function () {
     
     // Public login routes
-    Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
+    // Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
     Route::post('/verifyLogin', 'CodeGenerationPanelNewController@processLogin');
     Route::get('/verify', 'CodeGenerationPanelNewController@showVerify')->name('generationPanel.verify');
     Route::post('/confirmLogin', 'CodeGenerationPanelNewController@processVerify');
@@ -30,6 +30,7 @@ Route::domain('codes.panacea.live')->group(function () {
         Route::get('code/generate', 'CodeGenerationPanelNewController@showForm')->name('generationPanel.code.order');
         Route::post('code/generate', 'CodeGenerationPanelNewController@orderCode');
         Route::post('code/confirm', 'CodeGenerationPanelNewController@ConfrimArman')->name('generationPanel.code.confirm');
+        Route::post('order/{order}/cancel', 'CodeGenerationPanelNewController@cancelOrder')->name('generationPanel.order.cancel');
         Route::get('code/download/{id}', 'CodeGenerationPanelNewController@downloadGeneratedCsv')->name('generationPanel.code.download');
         Route::post('code/orderBack', 'CodeGenerationPanelNewController@orderBackForConfirm')->name('generationPanel.code.orderBack');
         Route::get('logout', 'CodeGenerationPanelNewController@logout')->name('generationPanel.logout');
@@ -49,15 +50,16 @@ Route::domain('codes.panacea.live')->group(function () {
 | Mobile Site - m.panacea.live
 |--------------------------------------------------------------------------
 */
-Route::domain('m.panacea.live')->group(function () {
-    Route::get('/', function () {
-        return Redirect::to('https://renata.panacea.live/');
-    });
-});
+// Route::domain('m.panacea.live')->group(function () {
+//     Route::get('mups', 'livecheckproControllerMups@page')->name('mups');
+    // Route::get('/', function () {
+    //     return Redirect::to('https://renata.panacea.live/');
+    // });
+// });
 
-Route::get('/', function () {
-    return Redirect::to('https://renata.panacea.live/');
-});
+// Route::get('/', function () {
+//     return Redirect::to('https://renata.panacea.live/');
+// });
 
 
 

@@ -18,6 +18,7 @@ class VerifyCsrfToken extends BaseVerifier
         'code/medicines',
         'code/medicineType',
         'code/medicineDosage',
+        'order/*/cancel',
         'panalytics_registration',
         'panalytics_activation/*',
         'panalytics_login',

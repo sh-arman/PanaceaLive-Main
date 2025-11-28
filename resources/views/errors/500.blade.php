@@ -49,7 +49,7 @@
         content: '';
         width: 20px;
         height: 20px;
-        background: #000;
+        background: #lightblue;
         position: absolute;
         top: 30px;
         left: 25px;

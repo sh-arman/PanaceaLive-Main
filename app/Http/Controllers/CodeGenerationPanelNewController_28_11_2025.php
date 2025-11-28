@@ -283,7 +283,9 @@ class CodeGenerationPanelNewController extends Controller
     }
 
 
-    public function ConfrimArman(Request $request) {
+
+
+    public function ConfrimArmanBackup_28_11_2025(Request $request) {
         // return $request->all();
 
         Session::forget('orderData');
@@ -385,6 +387,118 @@ class CodeGenerationPanelNewController extends Controller
         return redirect('/order');
     }
 
+
+
+    public function ConfrimArman(Request $request)
+    {
+        $maxQuantity = 400000;
+        $quantity = (int) $request->quantity;
+        if ($quantity > $maxQuantity) {
+            // Log::warning("Code generation request exceeded max: $quantity");
+            return back()->withErrors(['quantity' => "Maximum allowed quantity is $maxQuantity."]);
+        }
+
+        $available = \Panacea\Code::where('status', 0)
+            ->whereRaw('CHAR_LENGTH(code) = 7')
+            ->where('code', 'not like', '%0%')
+            ->count();
+        if ($available < $quantity) {
+            // \Log::warning("Not enough codes: requested $quantity, available $available");
+            return back()->withErrors(['quantity' => "Only $available codes available."]);
+        }
+
+        $mfg_date = $request->mfg_date . "-28";
+        $expiry_date = $request->expiry_date . "-28";
+        $order = \Panacea\Order::create([
+            'company_id' => $request->company_id,
+            'medicine_id' => $request->medicine_dosage_id,
+            'mfg_date' => $mfg_date,
+            'expiry_date' => $expiry_date,
+            'batch_number' => $request->batch_number,
+            'quantity' => $quantity,
+            'file' => '',
+        ]);
+        $order_id = $order->id;
+
+        $filename = $order_id . '_' . $request->file . '.csv';
+        $codesDir = public_path('codes');
+        if (!is_dir($codesDir)) {
+            @mkdir($codesDir, 0775, true);
+        }
+        $filepath = $codesDir . '/' . $filename;
+        $handle = fopen($filepath, 'w+');
+        if (!$handle) {
+            // \Log::error("Failed to open file for writing: $filepath");
+            return back()->withErrors(['file' => "Failed to create output file."]);
+        }
+
+        $template = \Panacea\Template::select('template_message')
+            ->where('med_id', $request->medicine_dosage_id)
+            ->where('flag', 'active')
+            ->first();
+        $templateMsg = $template && $template->template_message ? $template->template_message : '';
+
+        $codeIds = \Panacea\Code::where('status', 0)
+            ->whereRaw('CHAR_LENGTH(code) = 7')
+            ->where('code', 'not like', '%0%')
+            ->orderBy('id', 'desc')
+            ->limit($quantity)
+            ->pluck('id')
+            ->toArray();
+
+        $chunkSize = 10000;
+        $written = 0;
+        $sessionId = (string) Session::get('id');
+        $specialCase = ($sessionId === "1929" && $request->medicine_dosage_id == "3");
+        $is6space = ($request->prefix === "6spcae");
+
+        foreach (array_chunk($codeIds, $chunkSize) as $chunk) {
+            $codes = \Panacea\Code::whereIn('id', $chunk)->get(['id', 'code']);
+            foreach ($codes as $code) {
+                if ($specialCase) {
+                    // Special case: Session id 1929 and medicine_dosage_id 3
+                    fputcsv($handle, ["SMS (REN " . $code->code . ")"]);
+                } elseif ($templateMsg === "") {
+                    // If template message is empty
+                    fputcsv($handle, ['REN ' . $code->code]);
+                } elseif ($is6space) {
+                    // If prefix is 6spcae
+                    fputcsv($handle, ["REN     " . $code->code]);
+                } else {
+                    // Default: template with PBN/REN MCKRTWS logic
+                    if (strpos($templateMsg, 'PBN/REN MCKRTWS') !== false) {
+                        $parts = explode('PBN/REN MCKRTWS', $templateMsg);
+                        $before = isset($parts[0]) ? $parts[0] : '';
+                        $after = isset($parts[1]) ? $parts[1] : '';
+                        // fputcsv($handle, [$before . "REN " . $code->code . $after]);
+                        fputcsv($handle, ['REN ' . $code->code]);
+                    } else {
+                        // Fallback: just replace {CODE} if present
+                        $line = str_replace('{CODE}', $code->code, $templateMsg);
+                        fputcsv($handle, [$line]);
+                    }
+                }
+                $written++;
+            }
+            \Panacea\Code::whereIn('id', $chunk)->update(['status' => $order_id]);
+            \Log::info("Tagged and wrote chunk of " . count($chunk) . " codes for order $order_id");
+        }
+        fclose($handle);
+
+        $order->file = $filename;
+        $order->status = 'finished';
+        $order->save();
+
+        \Panacea\Log::create([
+            'company_id' => $request->company_id,
+            'company_admin_id' => \Cartalyst\Sentinel\Laravel\Facades\Sentinel::getUser()->id,
+            'action' => 2
+        ]);
+        // \Log::info("Code generation complete for order $order_id, total codes: $written, file: $filename");
+
+        return redirect('/order')->with('success', "Generated $written codes and tagged successfully.");
+    }
+
  
     public function indexOrder()
     {
@@ -398,22 +512,12 @@ class CodeGenerationPanelNewController extends Controller
         $data['page'] = 'print_log_page';
         $data['company_name'] = $company;
         $data['company'] = Company::where('display_name', $company)->first();
-        if (!$data['company']) {
-            return redirect('/')->withErrors(['company' => 'Company not found']);
-        }
-        // Use distinct to avoid ONLY_FULL_GROUP_BY issues
-        $data['medicine'] = Medicine::select('medicine_name')
-            ->where('company_id', $data['company']->id)
-            ->distinct()
-            ->orderBy('medicine_name')
-            ->get();
-        // Slim orders and avoid heavy medicines if applicable
-        $data['order'] = Order::with(['medicine:id,medicine_name,medicine_type,medicine_dosage'])
-            ->where('company_id', $data['company']->id)
-            // ->whereNotIn('medicine_id', [4, 8])
-            ->select('id','medicine_id','batch_number','quantity','status','file','created_at')
+        $data['medicine'] = Medicine::where('company_id', $data['company']->id)->groupBy('medicine_name')->get();
+        $data['order'] = Order::where('company_id', $data['company']->id)
             ->orderBy('created_at', 'desc')
-            ->limit(120)
+            ->offset(0)
+            ->limit(150)
+            // ->limit(50)
             ->get();
         return view('generationPanel.order.index', $data);
     }

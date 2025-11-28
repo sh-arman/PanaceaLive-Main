@@ -32,6 +32,7 @@ class FrontendController extends Controller
     public function showLanding()
     {
         if ($this->mobileChecker() == 1) {
+            // header('Location: https://panacea.live/mups');
             header('Location: https://renata.panacea.live');
             exit;
         } else {
