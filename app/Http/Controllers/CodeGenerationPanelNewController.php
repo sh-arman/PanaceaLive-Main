@@ -67,9 +67,8 @@ class CodeGenerationPanelNewController extends Controller
                 // $codeActive = '1234';
                 // $data['msg'] = $codeActive;
                 $data['message'] = $codeActive . ' - Is Your Login Code For Panacea Live.';
-                // $msg = urlencode( $data['message'] );
-               
-                $this->sendSms($auth->phone_number, urlencode( $data['message'] ));
+                $this->sendSms($auth->phone_number, $data['message']);
+
 
                 return $user->id;
             }else {
@@ -698,45 +697,43 @@ class CodeGenerationPanelNewController extends Controller
     }
 
 
-    protected function sendSms($phone_number, $message, $mask = 'Panacea')
-    {
+    // protected function sendSms($phone_number, $message, $mask = 'Panacea')
+    // {
+    //     // $apiUrl = "https://api.mobireach.com.bd/SendTextMessage?Username=panacealive&Password=Panacearocks@2022&From=MAXPRO&To=".$auth->phone_number."&Message=".  urlencode( $data['message'] );
+    //     $apiUrl = "https://api.mobireach.com.bd/SendTextMessage?Username=panacealive&Password=Panacearocks@2022&From=MAXPRO&To=".$phone_number."&Message=".$message;
+    //     $curl = curl_init($apiUrl);
+    //     curl_setopt($curl, CURLOPT_RETURNTRANSFER, true); 
+    //     curl_setopt($curl, CURLOPT_HTTPGET, true); 
+    //     $response = curl_exec($curl);
+    //     $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    //     $curlErr = curl_error($curl);
+    //     curl_close($curl);
 
-        // $apiUrl = "https://api.mobireach.com.bd/SendTextMessage?Username=panacealive&Password=Panacearocks@2022&From=MAXPRO&To=".$auth->phone_number."&Message=".  urlencode( $data['message'] );
-       
-        $apiUrl = "https://api.mobireach.com.bd/SendTextMessage?Username=panacealive&Password=Panacearocks@2022&From=MAXPRO&To=".$phone_number."&Message=".$message;
-        $curl = curl_init($apiUrl);
-        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true); 
-        curl_setopt($curl, CURLOPT_HTTPGET, true); 
-        $response = curl_exec($curl);
-        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-        $curlErr = curl_error($curl);
-        curl_close($curl);
+    //     // Log request + response metadata for diagnostics
+    //     \Log::info('[SMS] Request URL: '.$apiUrl);
+    //     if ($curlErr) {
+    //         \Log::error('[SMS] cURL error: '.$curlErr);
+    //     }
+    //     \Log::info('[SMS] HTTP status: '.$httpCode);
+    //     if (is_string($response)) {
+    //         \Log::info('[SMS] Response: '.substr($response, 0, 500));
+    //     }
 
-        // Log request + response metadata for diagnostics
-        \Log::info('[SMS] Request URL: '.$apiUrl);
-        if ($curlErr) {
-            \Log::error('[SMS] cURL error: '.$curlErr);
-        }
-        \Log::info('[SMS] HTTP status: '.$httpCode);
-        if (is_string($response)) {
-            \Log::info('[SMS] Response: '.substr($response, 0, 500));
-        }
+    //     // return $response;
 
-        // return $response;
-
-        // try {
-        //     $soapClient = new SoapClient("https://user.mobireach.com.bd/index.php?r=sms/service");
-        //     $value = $soapClient->SendTextMessage('panacealive','Panacearocks@2022','MAXPRO',$phone_number,$message);
-        //     dd($value);
-        //     return true;
-        //     if($value->ErrorCode==1501)
-        //     { 
-        //         \Log::info("Robi needs to be recharged");
-        //     }
-        // } catch (Exception $e) {
-        //     echo $e;
-        // }
-    }
+    //     // try {
+    //     //     $soapClient = new SoapClient("https://user.mobireach.com.bd/index.php?r=sms/service");
+    //     //     $value = $soapClient->SendTextMessage('panacealive','Panacearocks@2022','MAXPRO',$phone_number,$message);
+    //     //     dd($value);
+    //     //     return true;
+    //     //     if($value->ErrorCode==1501)
+    //     //     { 
+    //     //         \Log::info("Robi needs to be recharged");
+    //     //     }
+    //     // } catch (Exception $e) {
+    //     //     echo $e;
+    //     // }
+    // }
  
     protected function sendSmsRobiBangla($phone_number, $message, $mask = 'Panacea')
     {
@@ -803,5 +800,87 @@ class CodeGenerationPanelNewController extends Controller
             return $company_name->display_name;
         }
     }
+
+    protected function sendSms($phone_number, $message, $mask = 'MAXPRO')
+{
+    try {
+
+        $allowedSenders = ['MAXPRO']; // MUST be approved by provider
+        if (!in_array($mask, $allowedSenders)) {
+            \Log::error('[SMS] Sender not allowed locally: ' . $mask);
+            return false;
+        }
+        $tokenUrl = "https://api.mobireach.com.bd/auth/tokens";
+        $tokenPayload = json_encode([
+            "username" => "panacealive",
+            "password" => "Panacearocks@2022"
+        ]);
+
+        $tokenCurl = curl_init($tokenUrl);
+        curl_setopt_array($tokenCurl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                "Content-Type: application/json"
+            ],
+            CURLOPT_POSTFIELDS => $tokenPayload
+        ]);
+
+        $tokenResponse = curl_exec($tokenCurl);
+        curl_close($tokenCurl);
+        \Log::info('[SMS][TOKEN] Response: ' . $tokenResponse);
+
+        $tokenData = json_decode($tokenResponse, true);
+        if (!isset($tokenData['token'])) {
+            \Log::error('[SMS][TOKEN] Failed to get token');
+            return false;
+        }
+        $token = $tokenData['token'];
+
+
+        if (!preg_match('/^8801\d{9}$/', $phone_number)) {
+            \Log::error('[SMS] Invalid phone number: ' . $phone_number);
+            return false;
+        }
+
+        $smsUrl = "https://api.mobireach.com.bd/sms/send";
+        $smsPayload = json_encode([
+            "sender" => $mask,
+            "receiver" => [$phone_number],
+            "content" => $message,
+            "msgType" => "T",      // Transactional
+            "requestType" => "S",  // Single
+            "contentType" => 1     // Regular text
+        ]);
+
+        $curl = curl_init($smsUrl);
+        curl_setopt_array($curl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                "Authorization: Bearer " . $token,
+                "Content-Type: application/json"
+            ],
+            CURLOPT_POSTFIELDS => $smsPayload
+        ]);
+
+        $response = curl_exec($curl);
+        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+        \Log::info('[SMS] HTTP status: ' . $httpCode);
+        \Log::info('[SMS] Response: ' . $response);
+        $result = json_decode($response, true);
+        if ($httpCode !== 200 || !isset($result['status']) || $result['status'] !== 'SUCCESS') {
+            \Log::error('[SMS] SMS FAILED');
+            return false;
+        }
+        return true;
+
+    } catch (\Throwable $e) {
+        \Log::error('[SMS] Exception: ' . $e->getMessage());
+        return false;
+    }
+}
+
 
 }

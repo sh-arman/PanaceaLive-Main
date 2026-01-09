@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\App;
 Route::domain('codes.panacea.live')->group(function () {
     
     // Public login routes
-    // Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
+    Route::get('/', 'CodeGenerationPanelNewController@showLogin')->name('generationPanel.login');
     Route::post('/verifyLogin', 'CodeGenerationPanelNewController@processLogin');
     Route::get('/verify', 'CodeGenerationPanelNewController@showVerify')->name('generationPanel.verify');
     Route::post('/confirmLogin', 'CodeGenerationPanelNewController@processVerify');
@@ -165,6 +165,7 @@ Route::post('/resendcode', 'livecheckproController@ResendCode');
 | MUPS LiveCheck Pro Routes
 |--------------------------------------------------------------------------
 */
+Route::get('renata', 'livecheckproControllerMups@page')->name('mups');
 Route::get('mups', 'livecheckproControllerMups@page')->name('mups');
 Route::get('mups-leaflet', 'livecheckproControllerMups@leaflet')->name('leaflet');
 Route::post('/mupslivecheck', 'livecheckproControllerMups@mlivecheck')->name('mupslivecheck');
