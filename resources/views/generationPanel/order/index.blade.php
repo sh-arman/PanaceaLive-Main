@@ -100,31 +100,36 @@
                     </thead>
                     <tbody class="inner_table">
                     @foreach ($order as $ord)
-                        @php
-                            $status = strtolower($ord->status ?? '');
-                            $labelClass = 'label-warning';
-                            if ($status === 'finished') $labelClass = 'label-success';
-                            elseif ($status === 'failed' || $status === 'error') $labelClass = 'label-danger';
-                            elseif ($status === 'processing') $labelClass = 'label-info';
-                        @endphp
+                       
                         <tr>
                             <td>{{ $ord->medicine->medicine_name ." ". $ord->medicine->medicine_type ." " . $ord->medicine->medicine_dosage }}</td>
                             <td>{{ $ord->batch_number }}</td>
                             <td class="text-right">{{ number_format($ord->quantity) }}</td>
                             <td>
-                                <span class="label {{ $labelClass }}">{{ ucfirst($ord->status) }}</span>
+                                @if ($ord->status === 'finished')
+                                <a class="btn btn-success btn-xs">Finished</a>
+                                @else
+                                <a class="btn btn-warning btn-xs">Running</a>
+                                @endif
+                                {{-- <span class="label {{ $labelClass }}">{{ ucfirst($ord->status) }}</span> --}}
                             </td>
                             <td class="truncate" title="{{ $ord->file }}">{{ $ord->file }}</td>
                             <td>
-                                <a class="btn btn-primary btn-xs" href="codes/{{$ord->file}}"
-                                   download="{{strpos($ord->file, '_')!= false?explode('_', $ord->file, 2)[1]:$ord->file}}">Download</a>
-                                @php $st = strtolower($ord->status ?? ''); @endphp
+                            @if ($ord->status === 'finished')
+                                 <a class="btn btn-primary btn-xs" href="codes/{{$ord->file}}" download="{{strpos($ord->file, '_')!= false?explode('_', $ord->file, 2)[1]:$ord->file}}">Download</a>
+                            @else
+                                <a class="btn btn-warning btn-xs" href="" disabled>Download</a>
+                            @endif
+                               
+                           
+                                
+                                {{-- @php $st = strtolower($ord->status ?? ''); @endphp
                                 @if(in_array($st, ['processing','running']))
                                     <form method="POST" action="/order/{{ $ord->id }}/cancel" style="display:inline; margin-left:6px;">
                                         {{ csrf_field() }}
                                         <button type="submit" class="btn btn-warning btn-xs" onclick="return confirm('Cancel this running order?');">Cancel</button>
                                     </form>
-                                @endif
+                                @endif --}}
                             </td>
                             <td>{{ $ord->created_at }}</td>
                         </tr>
